@@ -161,6 +161,7 @@ type SidecarInjectionSpec struct {
 // SidecarTemplateData is the data object to which the templated
 // version of `SidecarInjectionSpec` is applied.
 type SidecarTemplateData struct {
+	WorkloadID     string
 	DeploymentMeta *metav1.ObjectMeta
 	ObjectMeta     *metav1.ObjectMeta
 	Spec           *corev1.PodSpec
@@ -494,7 +495,7 @@ func directory(filepath string) string {
 	return dir
 }
 
-func injectionData(sidecarTemplate, version string, deploymentMetadata *metav1.ObjectMeta, spec *corev1.PodSpec,
+func injectionData(sidecarTemplate, version string, workloadID string, deploymentMetadata *metav1.ObjectMeta, spec *corev1.PodSpec,
 	metadata *metav1.ObjectMeta, proxyConfig *meshconfig.ProxyConfig, meshConfig *meshconfig.MeshConfig) (
 	*SidecarInjectionSpec, string, error) { // nolint: lll
 	if err := validateAnnotations(metadata.GetAnnotations()); err != nil {
@@ -503,6 +504,7 @@ func injectionData(sidecarTemplate, version string, deploymentMetadata *metav1.O
 	}
 
 	data := SidecarTemplateData{
+		WorkloadID:     workloadID,
 		DeploymentMeta: deploymentMetadata,
 		ObjectMeta:     metadata,
 		Spec:           spec,
@@ -659,21 +661,31 @@ func intoObject(sidecarTemplate string, meshconfig *meshconfig.MeshConfig, in ru
 		return result, nil
 	}
 
+	var ownerReference string
+	var ownerKind string
+
 	// CronJobs have JobTemplates in them, instead of Templates, so we
 	// special case them.
 	if job, ok := out.(*v2alpha1.CronJob); ok {
 		metadata = &job.Spec.JobTemplate.ObjectMeta
 		deploymentMetadata = &job.ObjectMeta
 		podSpec = &job.Spec.JobTemplate.Spec.Template.Spec
+		ownerReference = deploymentMetadata.Name
+		ownerKind = strings.ToLower(job.Kind)
 	} else if pod, ok := out.(*corev1.Pod); ok {
 		metadata = &pod.ObjectMeta
 		deploymentMetadata = &pod.ObjectMeta
+		ownerReference = metadata.Name
+		ownerKind = strings.ToLower(pod.Kind)
 		podSpec = &pod.Spec
 	} else {
 		// `in` is a pointer to an Object. Dereference it.
 		outValue := reflect.ValueOf(out).Elem()
+		// fmt.Printf("outValue %#v\n", outValue)
 
 		deploymentMetadata = outValue.FieldByName("ObjectMeta").Addr().Interface().(*metav1.ObjectMeta)
+		ownerReference = deploymentMetadata.Name
+		ownerKind = strings.ToLower(outValue.FieldByName("TypeMeta").FieldByName("Kind").String())
 
 		templateValue := outValue.FieldByName("Spec").FieldByName("Template")
 		// `Template` is defined as a pointer in some older API
@@ -699,6 +711,7 @@ func intoObject(sidecarTemplate string, meshconfig *meshconfig.MeshConfig, in ru
 	spec, status, err := injectionData(
 		sidecarTemplate,
 		sidecarTemplateVersionHash(sidecarTemplate),
+		ownerReference+"."+ownerKind,
 		deploymentMetadata,
 		podSpec,
 		metadata,

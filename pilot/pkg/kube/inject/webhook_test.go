@@ -32,6 +32,8 @@ import (
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/onsi/gomega"
 	"k8s.io/api/admission/v1beta1"
+	appv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	extv1beta1 "k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,6 +48,7 @@ import (
 	"istio.io/istio/pilot/pkg/model"
 	"istio.io/istio/pilot/test/util"
 	"istio.io/istio/pkg/mcp/testing/testcerts"
+	testclient "k8s.io/client-go/kubernetes/fake"
 )
 
 const (
@@ -758,9 +761,6 @@ func TestHelmInject(t *testing.T) {
 					wantJSON := yamlToJSON(wantYAML, t)
 					wantDeployment := jsonToDeployment(wantJSON, t)
 
-					// Generate the patch.  At runtime, the webhook would actually generate the patch against the
-					// pod configuration. But since our input files are deployments, rather than actual pod instances,
-					// we have to apply the patch to the template portion of the deployment only.
 					templateJSON := convertToJSON(inputDeployment.Spec.Template, t)
 					got := webhook.inject(&v1beta1.AdmissionReview{
 						Request: &v1beta1.AdmissionRequest{
@@ -798,6 +798,195 @@ func TestHelmInject(t *testing.T) {
 			}
 			if util.Refresh() {
 				writeYamlsToGoldenFile(goldenYAMLs, wantFile, t)
+			}
+		})
+	}
+}
+
+func getWorkloadEnvParams(input *corev1.Pod) (string, string, error) {
+	var workloadID, workloadPorts string
+	foundWorkloadID := false
+	foundWorkloadPorts := false
+	for _, container := range input.Spec.Containers {
+		if container.Name != "istio-proxy" {
+			continue
+		}
+		for _, env := range container.Env {
+			if env.Name == "ISTIO_META_WORKLOAD_ID" {
+				workloadID = env.Value
+				foundWorkloadID = true
+			}
+			if env.Name == "ISTIO_META_WORKLOAD_PORTS" {
+				workloadPorts = env.Value
+				foundWorkloadPorts = true
+			}
+		}
+	}
+	if foundWorkloadID && foundWorkloadPorts {
+		return workloadID, workloadPorts, nil
+	}
+	return workloadID, workloadPorts, fmt.Errorf("cannot find workload id or workload ports environment parameters")
+}
+func TestOwnerReference(t *testing.T) {
+	// Create the webhook from the install configmap.
+	webhook := createTestWebhookFromHelmConfigMap(t)
+	webhook.kubeClient = testclient.NewSimpleClientset(
+		&extv1beta1.Deployment{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "hello-deployment",
+				Namespace: "default",
+			},
+		},
+		&extv1beta1.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "hello-replicaset",
+				Namespace: "default",
+			},
+		},
+		&extv1beta1.ReplicaSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "hello-replicaset-deadbeef",
+				Namespace: "default",
+				OwnerReferences: []metav1.OwnerReference{
+					{
+						Kind: "Deployment",
+						Name: "hello-deployment",
+					},
+				},
+			},
+		},
+		&appv1.StatefulSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "hello-statefulset",
+				Namespace: "default",
+			},
+		},
+		&appv1.DaemonSet{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "hello-daemonset",
+				Namespace: "default",
+			},
+		},
+		&batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "hello-job",
+				Namespace: "default",
+			},
+		},
+	)
+
+	cases := []struct {
+		ownerReferences []metav1.OwnerReference
+		wantWorkloadID  string
+	}{
+		{
+			ownerReferences: nil,
+			wantWorkloadID:  "hello-pod.pod",
+		},
+		{
+			ownerReferences: []metav1.OwnerReference{
+				{
+					Kind: "ReplicaSet",
+					Name: "hello-replicaset-deadbeef",
+				},
+			},
+			wantWorkloadID: "hello-deployment.deployment",
+		},
+		{
+			ownerReferences: []metav1.OwnerReference{
+				{
+					Kind: "ReplicaSet",
+					Name: "hello-replicaset",
+				},
+			},
+			wantWorkloadID: "hello-replicaset.replicaset",
+		},
+		{
+			ownerReferences: []metav1.OwnerReference{
+				{
+					Kind: "StatefulSet",
+					Name: "hello-statefulset",
+				},
+			},
+			wantWorkloadID: "hello-statefulset.statefulset",
+		},
+		{
+			ownerReferences: []metav1.OwnerReference{
+				{
+					Kind: "DaemonSet",
+					Name: "hello-daemonset",
+				},
+			},
+			wantWorkloadID: "hello-daemonset.daemonset",
+		},
+		{
+			ownerReferences: []metav1.OwnerReference{
+				{
+					Kind: "Job",
+					Name: "hello-job",
+				},
+			},
+			wantWorkloadID: "hello-job.job",
+		},
+	}
+
+	for _, c := range cases {
+		testName := fmt.Sprintf("%s", c.wantWorkloadID)
+		t.Run(testName, func(t *testing.T) {
+			// Create test pod with desired owner reference.
+			pod := corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					OwnerReferences: c.ownerReferences,
+					Name:            "hello-pod",
+					Namespace:       "default",
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "hello",
+							Image: "fake.docker.io/google-samples/hello-go-gke:1.0",
+							Ports: []corev1.ContainerPort{
+								{
+									ContainerPort: 80,
+								},
+								{
+									ContainerPort: 8080,
+								},
+							},
+						},
+					},
+				},
+			}
+			templateJSON := convertToJSON(pod, t)
+			got := webhook.inject(&v1beta1.AdmissionReview{
+				Request: &v1beta1.AdmissionRequest{
+					Object: runtime.RawExtension{
+						Raw: templateJSON,
+					},
+				},
+			})
+
+			// Apply the generated patch to the template.
+			patch := prettyJSON(got.Patch, t)
+			patchedTemplateJSON := applyJSONPatch(templateJSON, patch, t)
+
+			// Create the patched deployment. It's just a copy of the original, but with a patched template
+			// applied.
+			patchedPod := pod.DeepCopy()
+			patchedPod.Reset()
+			if err := json.Unmarshal(patchedTemplateJSON, &patchedPod); err != nil {
+				t.Fatal(err)
+			}
+			workoadID, workloadPorts, err := getWorkloadEnvParams(patchedPod)
+			if err != nil {
+				t.Error(err)
+			} else {
+				if workoadID != c.wantWorkloadID {
+					t.Errorf("Want workload ID %q, got %q", c.wantWorkloadID, workoadID)
+				}
+				if workloadPorts != "80,8080" {
+					t.Errorf("Want workload ports %q, got %q", "80,8080", workloadPorts)
+				}
 			}
 		})
 	}
@@ -961,6 +1150,9 @@ func getInjectableYamlDocs(yamlDoc string, t *testing.T) [][]byte {
 		// No injectable parts.
 		return [][]byte{}
 	}
+}
+
+type Pod interface {
 }
 
 func convertToJSON(i interface{}, t *testing.T) []byte {
@@ -1216,7 +1408,12 @@ func createWebhook(t testing.TB, sidecarTemplate string) (*Webhook, func()) {
 	}
 
 	wh, err := NewWebhook(WebhookParameters{
-		ConfigFile: configFile, MeshFile: meshFile, CertFile: certFile, KeyFile: keyFile, Port: port})
+		ConfigFile: configFile,
+		MeshFile:   meshFile,
+		CertFile:   certFile,
+		KeyFile:    keyFile,
+		Port:       port,
+		KubeClient: testclient.NewSimpleClientset()})
 	if err != nil {
 		cleanup()
 		t.Fatalf("NewWebhook() failed: %v", err)
@@ -1274,7 +1471,7 @@ func TestRunAndServe(t *testing.T) {
       "op":"add",
       "path":"/metadata/annotations",
       "value":{
-		  "sidecar.istio.io/status":"{\"version\":\"461c380844de8df1d1e2a80a09b6d7b58b8313c4a7d6796530eb124740a1440f\",\"initContainers\":[\"istio-init\"],\"containers\":[\"istio-proxy\"],\"volumes\":[\"istio-envoy\"],\"imagePullSecrets\":[\"istio-image-pull-secrets\"]}"
+		  		"sidecar.istio.io/status":"{\"version\":\"461c380844de8df1d1e2a80a09b6d7b58b8313c4a7d6796530eb124740a1440f\",\"initContainers\":[\"istio-init\"],\"containers\":[\"istio-proxy\"],\"volumes\":[\"istio-envoy\"],\"imagePullSecrets\":[\"istio-image-pull-secrets\"]}"
       }
    }
 ]`)

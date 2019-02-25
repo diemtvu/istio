@@ -76,6 +76,11 @@ var (
 
 			log.Infof("version %s", version.Info.String())
 
+			client, err := kube.CreateClientset(flags.kubeconfigFile, "")
+			if err != nil {
+				return err
+			}
+
 			parameters := inject.WebhookParameters{
 				ConfigFile:          flags.injectConfigFile,
 				MeshFile:            flags.meshconfig,
@@ -84,6 +89,7 @@ var (
 				Port:                flags.port,
 				HealthCheckInterval: flags.healthCheckInterval,
 				HealthCheckFile:     flags.healthCheckFile,
+				KubeClient:          client,
 			}
 			wh, err := inject.NewWebhook(parameters)
 			if err != nil {

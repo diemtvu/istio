@@ -33,6 +33,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/client-go/kubernetes"
 
 	meshconfig "istio.io/api/mesh/v1alpha1"
 	"istio.io/istio/pilot/cmd"
@@ -72,6 +73,7 @@ type Webhook struct {
 	certFile   string
 	keyFile    string
 	cert       *tls.Certificate
+	kubeClient kubernetes.Interface
 }
 
 func loadConfig(injectFile, meshFile string) (*Config, *meshconfig.MeshConfig, error) {
@@ -124,6 +126,9 @@ type WebhookParameters struct {
 	// HealthCheckFile specifies the path to the health check file
 	// that is periodically updated.
 	HealthCheckFile string
+
+	// K8s API client
+	KubeClient kubernetes.Interface
 }
 
 // NewWebhook creates a new instance of a mutating webhook for automatic sidecar injection.
@@ -165,6 +170,7 @@ func NewWebhook(p WebhookParameters) (*Webhook, error) {
 		certFile:               p.CertFile,
 		keyFile:                p.KeyFile,
 		cert:                   &pair,
+		kubeClient:             p.KubeClient,
 	}
 	// mtls disabled because apiserver webhook cert usage is still TBD.
 	wh.server.TLSConfig = &tls.Config{GetCertificate: wh.getCert}
@@ -522,6 +528,71 @@ func toAdmissionResponse(err error) *v1beta1.AdmissionResponse {
 	return &v1beta1.AdmissionResponse{Result: &metav1.Status{Message: err.Error()}}
 }
 
+func (wh *Webhook) getObjectMetad(namespace string, name string, kind string) (*metav1.ObjectMeta, error) {
+	// type MyObject interface {
+	// 	GetOwnerReferences() []OwnerReference
+	// }
+
+	var err error
+	type MyObject interface {
+		GetOwnerReferences() []metav1.OwnerReference
+	}
+	var o MyObject
+	o, err = wh.kubeClient.ExtensionsV1beta1().ReplicaSets(namespace).Get(name, metav1.GetOptions{})
+	if err == nil {
+		return nil, nil
+	}
+	fmt.Printf("%v", o.GetOwnerReferences())
+	return nil, err
+}
+
+func (wh *Webhook) getOwnerReference(namespace string, name string, kind string) (string, string, error) {
+	log.Infof("getOwnerReference for %q of kind=%s\n", name, kind)
+	type SimpleObject interface {
+		GetOwnerReferences() []metav1.OwnerReference
+	}
+	// TODO(diemvu): add other kinds.
+	var object SimpleObject
+	var err error
+	switch kind {
+	case "DaemonSet":
+		object, err = wh.kubeClient.AppsV1().DaemonSets(namespace).Get(name, metav1.GetOptions{})
+	case "Job":
+		object, err = wh.kubeClient.BatchV1().Jobs(namespace).Get(name, metav1.GetOptions{})
+	case "ReplicaSet":
+		object, err = wh.kubeClient.ExtensionsV1beta1().ReplicaSets(namespace).Get(name, metav1.GetOptions{})
+	case "Deployment":
+		object, err = wh.kubeClient.ExtensionsV1beta1().Deployments(namespace).Get(name, metav1.GetOptions{})
+	case "StatefulSet":
+		object, err = wh.kubeClient.AppsV1().StatefulSets(namespace).Get(name, metav1.GetOptions{})
+	default:
+		return "", "", fmt.Errorf("getOwnerReference does not support kind %s", kind)
+	}
+
+	if err != nil {
+		return "", "", err
+	}
+	if len(object.GetOwnerReferences()) == 0 {
+		return name, kind, nil
+	}
+
+	// Use only the first owner.
+	return wh.getOwnerReference(namespace, object.GetOwnerReferences()[0].Name, object.GetOwnerReferences()[0].Kind)
+}
+
+func (wh *Webhook) getWorkloadID(pod corev1.Pod) (string, error) {
+	if len(pod.OwnerReferences) == 0 {
+		log.Debugf("Pod has no owner. Uses pod name as workload id")
+		return pod.Name + ".pod", nil
+	}
+
+	ownerReference, ownerKind, err := wh.getOwnerReference(pod.Namespace, pod.OwnerReferences[0].Name, pod.OwnerReferences[0].Kind)
+	if err != nil {
+		return "", err
+	}
+	return ownerReference + "." + strings.ToLower(ownerKind), nil
+}
+
 func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {
 	req := ar.Request
 	var pod corev1.Pod
@@ -548,7 +619,11 @@ func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionRespons
 			Allowed: true,
 		}
 	}
-
+	workloadID, err := wh.getWorkloadID(pod)
+	if err != nil {
+		log.Infof("Get Workload ID error: err=%v\n", err)
+		return toAdmissionResponse(err)
+	}
 	// due to bug https://github.com/kubernetes/kubernetes/issues/57923,
 	// k8s sa jwt token volume mount file is only accessible to root user, not istio-proxy(the user that istio proxy runs as).
 	// workaround by https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-pod
@@ -559,7 +634,7 @@ func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionRespons
 		}
 	}
 
-	spec, status, err := injectionData(wh.sidecarConfig.Template, wh.sidecarTemplateVersion, &pod.ObjectMeta, &pod.Spec, &pod.ObjectMeta, wh.meshConfig.DefaultConfig, wh.meshConfig) // nolint: lll
+	spec, status, err := injectionData(wh.sidecarConfig.Template, wh.sidecarTemplateVersion, workloadID, &pod.ObjectMeta, &pod.Spec, &pod.ObjectMeta, wh.meshConfig.DefaultConfig, wh.meshConfig) // nolint: lll
 	if err != nil {
 		log.Infof("Injection data: err=%v spec=%v\n", err, status)
 		return toAdmissionResponse(err)

@@ -398,6 +398,63 @@ func TestNodeMetadata(t *testing.T) {
 
 }
 
+func TestBackendMapMetadata(t *testing.T) {
+	cases := []struct {
+		envs     []string
+		expected map[string]string
+	}{
+		{
+			envs: []string{
+				"ISTIO_META_WORKLOAD_ID=foo.bar",
+				"ISTIO_META_WORKLOAD_PORTS=80,90",
+			},
+			expected: map[string]string{
+				"WORKLOAD_ID":    "foo.bar",
+				"WORKLOAD_PORTS": "80,90",
+				"com.googleapis.trafficdirector.workload_name":         "foo.bar",
+				"com.googleapis.trafficdirector.inbound_backend_ports": "80,90",
+				"istio": "sidecar",
+			},
+		},
+		{
+			envs: []string{
+				"ISTIO_META_WORKLOAD_ID=foo.bar",
+				"ISTIO_META_WORKLOAD_PORTS=",
+			},
+			expected: map[string]string{
+				"WORKLOAD_ID": "foo.bar",
+				"com.googleapis.trafficdirector.workload_name": "foo.bar",
+				"WORKLOAD_PORTS": "",
+				"istio":          "sidecar",
+			},
+		},
+		{
+			envs: []string{
+				"ISTIO_META_WORKLOAD_ID=",
+				"ISTIO_META_WORKLOAD_PORTS=90",
+			},
+			expected: map[string]string{
+				"WORKLOAD_ID":    "",
+				"WORKLOAD_PORTS": "90",
+				"com.googleapis.trafficdirector.inbound_backend_ports": "90",
+				"istio": "sidecar",
+			},
+		},
+		{
+			envs: []string{},
+			expected: map[string]string{
+				"istio": "sidecar",
+			},
+		},
+	}
+	for _, c := range cases {
+		got := getNodeMetaData(c.envs)
+		if !reflect.DeepEqual(got, c.expected) {
+			t.Fatalf("Maps are not equal.\ngot: %v\nwant: %v", got, c.expected)
+		}
+	}
+}
+
 func mergeMap(to map[string]string, from map[string]string) {
 	for k, v := range from {
 		to[k] = v

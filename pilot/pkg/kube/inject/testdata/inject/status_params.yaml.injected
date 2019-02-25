@@ -9,7 +9,7 @@ spec:
   template:
     metadata:
       annotations:
-        sidecar.istio.io/status: '{"version":"","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
+        sidecar.istio.io/status: '{"version":"a12596f06af1524130b57e4c77072c46ccf4e84ccd9ef18559661b83002e6441","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
       creationTimestamp: null
       labels:
         app: status
@@ -59,6 +59,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: ISTIO_META_WORKLOAD_ID
+          value: statusPort.deployment
+        - name: ISTIO_META_WORKLOAD_PORTS
+          value: "80"
         - name: INSTANCE_IP
           valueFrom:
             fieldRef:

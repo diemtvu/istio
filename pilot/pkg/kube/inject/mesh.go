@@ -159,6 +159,10 @@ containers:
     valueFrom:
       fieldRef:
         fieldPath: metadata.namespace
+  - name: ISTIO_META_WORKLOAD_ID
+    value: [[ .WorkloadID ]]
+  - name: ISTIO_META_WORKLOAD_PORTS
+    value: "[[ annotation .ObjectMeta $includeInboundPortsKey (includeInboundPorts .Spec.Containers) ]]"
   - name: INSTANCE_IP
     valueFrom:
       fieldRef:

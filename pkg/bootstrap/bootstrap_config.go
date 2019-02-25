@@ -175,6 +175,25 @@ func extractMetadata(envs []string, prefix string, set setMetaFunc, meta map[str
 	}
 }
 
+func extractCsmInboundBackend(envs []string, set setMetaFunc, meta map[string]string) {
+	metaWorkloadIDPrefix := "ISTIO_META_WORKLOAD_ID="
+	metaWorkloadIDPrefixLen := len(metaWorkloadIDPrefix)
+	metaWorkloadPortsPrefix := "ISTIO_META_WORKLOAD_PORTS="
+	metaWorkloadPortsPrefixLen := len(metaWorkloadPortsPrefix)
+
+	for _, env := range envs {
+		if strings.HasPrefix(env, metaWorkloadIDPrefix) {
+			if value := env[metaWorkloadIDPrefixLen:]; len(value) > 0 {
+				set(meta, "com.googleapis.trafficdirector.workload_name", value)
+			}
+		} else if strings.HasPrefix(env, metaWorkloadPortsPrefix) {
+			if value := env[metaWorkloadPortsPrefixLen:]; len(value) > 0 {
+				set(meta, "com.googleapis.trafficdirector.inbound_backend_ports", value)
+			}
+		}
+	}
+}
+
 // getNodeMetaData function uses an environment variable contract
 // ISTIO_METAJSON_* env variables contain json_string in the value.
 // 					The name of variable is ignored.
@@ -192,6 +211,11 @@ func getNodeMetaData(envs []string) map[string]string {
 			log.Warnf("Env variable %s [%s] failed json unmarshal: %v", key, val, err)
 		}
 	}, meta)
+
+	extractCsmInboundBackend(envs, func(m map[string]string, key string, val string) {
+		m[key] = val
+	}, meta)
+
 	meta["istio"] = "sidecar"
 
 	return meta

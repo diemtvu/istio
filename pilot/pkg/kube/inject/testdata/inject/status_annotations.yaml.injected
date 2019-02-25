@@ -13,7 +13,7 @@ spec:
         readiness.status.sidecar.istio.io/failureThreshold: "300"
         readiness.status.sidecar.istio.io/initialDelaySeconds: "100"
         readiness.status.sidecar.istio.io/periodSeconds: "200"
-        sidecar.istio.io/status: '{"version":"","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
+        sidecar.istio.io/status: '{"version":"a0efce7041379c317a62546270034badf349943954bd3a5435da87a095e1e246","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
         status.sidecar.istio.io/port: "123"
       creationTimestamp: null
       labels:
@@ -64,6 +64,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.namespace
+        - name: ISTIO_META_WORKLOAD_ID
+          value: statusPort.deployment
+        - name: ISTIO_META_WORKLOAD_PORTS
+          value: "80"
         - name: INSTANCE_IP
           valueFrom:
             fieldRef:

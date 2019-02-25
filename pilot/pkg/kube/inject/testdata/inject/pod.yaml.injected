@@ -2,7 +2,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   annotations:
-    sidecar.istio.io/status: '{"version":"","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
+    sidecar.istio.io/status: '{"version":"a0efce7041379c317a62546270034badf349943954bd3a5435da87a095e1e246","initContainers":["istio-init"],"containers":["istio-proxy"],"volumes":["istio-envoy","istio-certs"],"imagePullSecrets":null}'
   creationTimestamp: null
   name: hellopod
 spec:
@@ -51,6 +51,10 @@ spec:
       valueFrom:
         fieldRef:
           fieldPath: metadata.namespace
+    - name: ISTIO_META_WORKLOAD_ID
+      value: hellopod.pod
+    - name: ISTIO_META_WORKLOAD_PORTS
+      value: "80"
     - name: INSTANCE_IP
       valueFrom:
         fieldRef:
