@@ -185,10 +185,12 @@ func extractCsmInboundBackend(envs []string, set setMetaFunc, meta map[string]st
 		if strings.HasPrefix(env, metaWorkloadIDPrefix) {
 			if value := env[metaWorkloadIDPrefixLen:]; len(value) > 0 {
 				set(meta, "com.googleapis.trafficdirector.workload_name", value)
+				set(meta, "TRAFFICDIRECTOR_WORKLOAD_NAME", value)
 			}
 		} else if strings.HasPrefix(env, metaWorkloadPortsPrefix) {
 			if value := env[metaWorkloadPortsPrefixLen:]; len(value) > 0 {
 				set(meta, "com.googleapis.trafficdirector.inbound_backend_ports", value)
+				set(meta, "TRAFFICDIRECTOR_INBOUND_BACKEND_PORTS", value)
 			}
 		}
 	}
