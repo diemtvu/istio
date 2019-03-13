@@ -63,7 +63,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: ISTIO_META_WORKLOAD_ID
-          value: hello-v1.deployment
+          value: hello-v1-deployment
         - name: ISTIO_META_WORKLOAD_PORTS
           value: "80"
         - name: INSTANCE_IP
@@ -201,7 +201,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: ISTIO_META_WORKLOAD_ID
-          value: hello-v2.deployment
+          value: hello-v2-deployment
         - name: ISTIO_META_WORKLOAD_PORTS
           value: "81"
         - name: INSTANCE_IP

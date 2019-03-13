@@ -63,7 +63,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: ISTIO_META_WORKLOAD_ID
-          value: nginx.pod
+          value: nginx-pod
         - name: ISTIO_META_WORKLOAD_PORTS
           value: "80"
         - name: INSTANCE_IP

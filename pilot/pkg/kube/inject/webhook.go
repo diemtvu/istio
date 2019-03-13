@@ -583,14 +583,14 @@ func (wh *Webhook) getOwnerReference(namespace string, name string, kind string)
 func (wh *Webhook) getWorkloadID(pod corev1.Pod) (string, error) {
 	if len(pod.OwnerReferences) == 0 {
 		log.Debugf("Pod has no owner. Uses pod name as workload id")
-		return pod.Name + ".pod", nil
+		return pod.Name + "-pod", nil
 	}
 
 	ownerReference, ownerKind, err := wh.getOwnerReference(pod.Namespace, pod.OwnerReferences[0].Name, pod.OwnerReferences[0].Kind)
 	if err != nil {
 		return "", err
 	}
-	return ownerReference + "." + strings.ToLower(ownerKind), nil
+	return ownerReference + "-" + strings.ToLower(ownerKind), nil
 }
 
 func (wh *Webhook) inject(ar *v1beta1.AdmissionReview) *v1beta1.AdmissionResponse {

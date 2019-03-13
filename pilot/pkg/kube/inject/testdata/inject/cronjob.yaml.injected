@@ -61,7 +61,7 @@ spec:
                 fieldRef:
                   fieldPath: metadata.namespace
             - name: ISTIO_META_WORKLOAD_ID
-              value: hellocron.cronjob
+              value: hellocron-cronjob
             - name: ISTIO_META_WORKLOAD_PORTS
             - name: INSTANCE_IP
               valueFrom:

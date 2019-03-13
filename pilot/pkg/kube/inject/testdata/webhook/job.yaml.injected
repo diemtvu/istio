@@ -62,7 +62,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: ISTIO_META_WORKLOAD_ID
-          value: pi.pod
+          value: pi-pod
         - name: ISTIO_META_WORKLOAD_PORTS
         - name: INSTANCE_IP
           valueFrom:

@@ -65,7 +65,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: ISTIO_META_WORKLOAD_ID
-          value: hello.statefulset
+          value: hello-statefulset
         - name: ISTIO_META_WORKLOAD_PORTS
           value: "80"
         - name: INSTANCE_IP

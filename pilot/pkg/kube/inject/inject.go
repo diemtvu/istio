@@ -711,7 +711,7 @@ func intoObject(sidecarTemplate string, meshconfig *meshconfig.MeshConfig, in ru
 	spec, status, err := injectionData(
 		sidecarTemplate,
 		sidecarTemplateVersionHash(sidecarTemplate),
-		ownerReference+"."+ownerKind,
+		ownerReference+"-"+ownerKind,
 		deploymentMetadata,
 		podSpec,
 		metadata,

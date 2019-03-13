@@ -81,7 +81,7 @@ items:
               fieldRef:
                 fieldPath: metadata.namespace
           - name: ISTIO_META_WORKLOAD_ID
-            value: frontend.deployment
+            value: frontend-deployment
           - name: ISTIO_META_WORKLOAD_PORTS
           - name: INSTANCE_IP
             valueFrom:

@@ -881,7 +881,7 @@ func TestOwnerReference(t *testing.T) {
 	}{
 		{
 			ownerReferences: nil,
-			wantWorkloadID:  "hello-pod.pod",
+			wantWorkloadID:  "hello-pod-pod",
 		},
 		{
 			ownerReferences: []metav1.OwnerReference{
@@ -890,7 +890,7 @@ func TestOwnerReference(t *testing.T) {
 					Name: "hello-replicaset-deadbeef",
 				},
 			},
-			wantWorkloadID: "hello-deployment.deployment",
+			wantWorkloadID: "hello-deployment-deployment",
 		},
 		{
 			ownerReferences: []metav1.OwnerReference{
@@ -899,7 +899,7 @@ func TestOwnerReference(t *testing.T) {
 					Name: "hello-replicaset",
 				},
 			},
-			wantWorkloadID: "hello-replicaset.replicaset",
+			wantWorkloadID: "hello-replicaset-replicaset",
 		},
 		{
 			ownerReferences: []metav1.OwnerReference{
@@ -908,7 +908,7 @@ func TestOwnerReference(t *testing.T) {
 					Name: "hello-statefulset",
 				},
 			},
-			wantWorkloadID: "hello-statefulset.statefulset",
+			wantWorkloadID: "hello-statefulset-statefulset",
 		},
 		{
 			ownerReferences: []metav1.OwnerReference{
@@ -917,7 +917,7 @@ func TestOwnerReference(t *testing.T) {
 					Name: "hello-daemonset",
 				},
 			},
-			wantWorkloadID: "hello-daemonset.daemonset",
+			wantWorkloadID: "hello-daemonset-daemonset",
 		},
 		{
 			ownerReferences: []metav1.OwnerReference{
@@ -926,7 +926,7 @@ func TestOwnerReference(t *testing.T) {
 					Name: "hello-job",
 				},
 			},
-			wantWorkloadID: "hello-job.job",
+			wantWorkloadID: "hello-job-job",
 		},
 	}
 

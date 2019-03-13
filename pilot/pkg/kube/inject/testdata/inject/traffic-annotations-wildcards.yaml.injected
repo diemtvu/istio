@@ -64,7 +64,7 @@ spec:
             fieldRef:
               fieldPath: metadata.namespace
         - name: ISTIO_META_WORKLOAD_ID
-          value: traffic.deployment
+          value: traffic-deployment
         - name: ISTIO_META_WORKLOAD_PORTS
           value: '*'
         - name: INSTANCE_IP

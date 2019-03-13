@@ -405,27 +405,30 @@ func TestBackendMapMetadata(t *testing.T) {
 	}{
 		{
 			envs: []string{
-				"ISTIO_META_WORKLOAD_ID=foo.bar",
+				"ISTIO_META_WORKLOAD_ID=foo-bar",
 				"ISTIO_META_WORKLOAD_PORTS=80,90",
 			},
 			expected: map[string]string{
-				"WORKLOAD_ID":    "foo.bar",
-				"WORKLOAD_PORTS": "80,90",
-				"com.googleapis.trafficdirector.workload_name":         "foo.bar",
+				"WORKLOAD_ID":                                          "foo-bar",
+				"WORKLOAD_PORTS":                                       "80,90",
+				"TRAFFICDIRECTOR_WORKLOAD_NAME":                        "foo-bar",
+				"TRAFFICDIRECTOR_INBOUND_BACKEND_PORTS":                "80,90",
+				"com.googleapis.trafficdirector.workload_name":         "foo-bar",
 				"com.googleapis.trafficdirector.inbound_backend_ports": "80,90",
 				"istio": "sidecar",
 			},
 		},
 		{
 			envs: []string{
-				"ISTIO_META_WORKLOAD_ID=foo.bar",
+				"ISTIO_META_WORKLOAD_ID=foo-bar",
 				"ISTIO_META_WORKLOAD_PORTS=",
 			},
 			expected: map[string]string{
-				"WORKLOAD_ID": "foo.bar",
-				"com.googleapis.trafficdirector.workload_name": "foo.bar",
-				"WORKLOAD_PORTS": "",
-				"istio":          "sidecar",
+				"WORKLOAD_ID":                                  "foo-bar",
+				"WORKLOAD_PORTS":                               "",
+				"TRAFFICDIRECTOR_WORKLOAD_NAME":                "foo-bar",
+				"com.googleapis.trafficdirector.workload_name": "foo-bar",
+				"istio": "sidecar",
 			},
 		},
 		{
@@ -434,8 +437,9 @@ func TestBackendMapMetadata(t *testing.T) {
 				"ISTIO_META_WORKLOAD_PORTS=90",
 			},
 			expected: map[string]string{
-				"WORKLOAD_ID":    "",
-				"WORKLOAD_PORTS": "90",
+				"WORKLOAD_ID":                           "",
+				"WORKLOAD_PORTS":                        "90",
+				"TRAFFICDIRECTOR_INBOUND_BACKEND_PORTS": "90",
 				"com.googleapis.trafficdirector.inbound_backend_ports": "90",
 				"istio": "sidecar",
 			},
