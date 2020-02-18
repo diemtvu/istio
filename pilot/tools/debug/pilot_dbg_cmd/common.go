@@ -51,10 +51,9 @@ package pilot_dbg_cmd
 
 import (
 	"context"
-	"io/ioutil"
-	// "flag"
 	"fmt"
-	// "io/ioutil"
+	"io"
+	"io/ioutil"
 	"math/rand"
 	"net"
 	"os"
@@ -66,27 +65,24 @@ import (
 	xdsapi "github.com/envoyproxy/go-control-plane/envoy/api/v2"
 	core1 "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
 	ads "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v2"
-
+	"github.com/spf13/cobra"
+	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
-	// "github.com/golang/protobuf/ptypes"
-	// "github.com/golang/protobuf/ptypes/any"
 	"google.golang.org/grpc"
+	v2 "istio.io/istio/pilot/pkg/proxy/envoy/v2"
 	v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
 	"k8s.io/client-go/tools/clientcmd"
 
-	"github.com/golang/protobuf/jsonpb"
-	v2 "istio.io/istio/pilot/pkg/proxy/envoy/v2"
-
 	"istio.io/pkg/env"
 	"istio.io/pkg/log"
 )
 
 const (
-	LocalPortStart = 50000
-	LocalPortEnd   = 60000
+	localPortStart = 50000
+	localPortEnd   = 60000
 )
 
 // PodInfo holds information to identify pod.
@@ -109,7 +105,7 @@ func getAllPods(kubeconfig string) (*v1.PodList, error) {
 	return clientset.CoreV1().Pods(meta_v1.NamespaceAll).List(meta_v1.ListOptions{})
 }
 
-func NewPodInfo(nameOrAppLabel string, kubeconfig string, proxyType string) *PodInfo {
+func newPodInfo(nameOrAppLabel string, kubeconfig string, proxyType string) *PodInfo {
 	log.Debugf("Using kube config at %s", kubeconfig)
 	pods, err := getAllPods(kubeconfig)
 	if err != nil {
@@ -225,7 +221,7 @@ func portForwardPilot(kubeConfig, pilotURL string) (*os.Process, string, error) 
 	}
 
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	localPort := r.Intn(LocalPortEnd-LocalPortStart) + LocalPortStart
+	localPort := r.Intn(localPortEnd-localPortStart) + localPortStart
 	cmd := fmt.Sprintf("kubectl port-forward %s -n istio-system %d:15010", podName, localPort)
 	parts := strings.Split(cmd, " ")
 	c := exec.Command(parts[0], parts[1:]...)
@@ -252,13 +248,14 @@ func portForwardPilot(kubeConfig, pilotURL string) (*os.Process, string, error) 
 
 // PilotClient holds information to make xDS request to pilot.
 type PilotClient struct {
-	pilotURL string
-
+	pilotURL           string
 	portForwardProcess *os.Process
+
+	streaming bool
 }
 
 // NewPilotClient create new pilot client. It will create a port-forward to pilot if needed.
-func NewPilotClient(pilotURL, kubeConfig string) *PilotClient {
+func newPilotClient() *PilotClient {
 	process, effectivePilotURL, err := portForwardPilot(resolveKubeConfigPath(kubeConfig), pilotURL)
 	if err != nil {
 		log.Fatalf("Cannot do port-forwarding for pilot: %v", err)
@@ -266,10 +263,11 @@ func NewPilotClient(pilotURL, kubeConfig string) *PilotClient {
 	return &PilotClient{
 		pilotURL:           effectivePilotURL,
 		portForwardProcess: process,
+		streaming:          streaming,
 	}
 }
 
-func (c *PilotClient) Close() {
+func (c *PilotClient) close() {
 	if c.portForwardProcess != nil {
 		log.Debugf("Close port-forward process %d", c.portForwardProcess.Pid)
 		if err := c.portForwardProcess.Kill(); err != nil {
@@ -278,9 +276,13 @@ func (c *PilotClient) Close() {
 	}
 }
 
+type xDSHandler interface {
+	makeRequest(pod *PodInfo) *xdsapi.DiscoveryRequest
+	onXDSResponse(resp *xdsapi.DiscoveryResponse) error
+}
 
-func (c *PilotClient) GetXdsResponse(req *xdsapi.DiscoveryRequest) *xdsapi.DiscoveryResponse {
-	log.Infof("xds Request: %s", req.String())
+func (c *PilotClient) send(req *xdsapi.DiscoveryRequest, handler xDSHandler) {
+	log.Infof("Send xDS request:\n%s\n", req.String())
 	conn, err := grpc.Dial(c.pilotURL, grpc.WithInsecure())
 	if err != nil {
 		panic(err.Error())
@@ -296,14 +298,25 @@ func (c *PilotClient) GetXdsResponse(req *xdsapi.DiscoveryRequest) *xdsapi.Disco
 	if err != nil {
 		panic(err.Error())
 	}
-	res, err := stream.Recv()
-	if err != nil {
-		panic(err.Error())
+	for {
+		log.Infof("Waiting for response .......... ")
+		res, err := stream.Recv()
+		if err == io.EOF {
+			break
+		} else if err != nil {
+			panic(err.Error())
+		}
+		if err := handler.onXDSResponse(res); err != nil {
+			log.Fatalf("%v", err)
+			// panic(err.Error())
+		}
+		if !c.streaming {
+			break
+		}
 	}
-	return res
 }
 
-func Output(p proto.Message) {
+func outputJSON(p proto.Message) {
 	marshaller := jsonpb.Marshaler{
 		Indent: "  ",
 	}
@@ -320,79 +333,20 @@ func Output(p proto.Message) {
 	}
 }
 
-// func (c *PilotClient) SendXDS(req *xdsapi.DiscoveryRequest) (*xdsapi.DiscoveryResponse, error) {
-// 	resp, err = pod.getXdsResponse(c.pilotUrl, req)
-// }
-// func main() {
-// 	kubeConfig := flag.String("kubeconfig", "~/.kube/config", "path to the kubeconfig file. Default is ~/.kube/config")
-// 	pilotURL := flag.String("pilot", "", "pilot address. Will try port forward if not provided.")
-// 	configType := flag.String("type", "lds", "lds, cds, or eds. Default lds.")
-// 	proxyType := flag.String("proxytype", "", "sidecar, ingress, router.")
-// 	proxyTag := flag.String("proxytag", "", "Pod name or app label or istio label to identify the proxy.")
-// 	resources := flag.String("res", "", "Resource(s) to get config for. LDS/CDS should leave it empty.")
-// 	outputFile := flag.String("out", "", "output file. Leave blank to go to stdout")
-// 	flag.Parse()
+func makeXDSCmd(use string, handler xDSHandler) *cobra.Command {
+	return &cobra.Command{
+		Use:   use,
+		Short: fmt.Sprintf("Show %s resources", use),
+		Long:  fmt.Sprintf("Show %s resources", use),
+		Run: func(cmd *cobra.Command, args []string) {
+			pilotClient := newPilotClient()
+			defer func() {
+				pilotClient.close()
+			}()
 
-// 	process, pilot, err := portForwardPilot(resolveKubeConfigPath(*kubeConfig), *pilotURL)
-// 	if err != nil {
-// 		log.Errorf("pilot port forward failed: %v", err)
-// 		return
-// 	}
-// 	defer func() {
-// 		if process != nil {
-// 			err := process.Kill()
-// 			if err != nil {
-// 				log.Errorf("Failed to kill port-forward process, pid: %d", process.Pid)
-// 			}
-// 		}
-// 	}()
-// 	pod := NewPodInfo(*proxyTag, resolveKubeConfigPath(*kubeConfig), *proxyType)
-
-// 	var resp *xdsapi.DiscoveryResponse
-// 	switch *configType {
-// 	case "lds", "cds":
-// 		req := pod.makeRequest(*configType)
-// 		log.Infof("Request:%v", req)
-// 		resp, err = pod.getXdsResponse(pilot, pod.makeRequest(*configType))
-// 	case "rds", "eds":
-// 		resp, err = pod.getXdsResponse(pilot, pod.appendResources(pod.makeRequest(*configType), strings.Split(*resources, ",")))
-// 	default:
-// 		log.Errorf("Unknown config type: %q", *configType)
-// 		os.Exit(1)
-// 	}
-
-// 	if err != nil {
-// 		log.Errorf("Failed to get Xds response for %v. Error: %v", *resources, err)
-// 		return
-// 	}
-
-// 	fmt.Printf("\nResp: %s\n", proto.MarshalTextString(resp))
-// 	for _, l := range resp.Resources {
-// 		p := &xdsapi.Listener{}
-// 		if err := ptypes.UnmarshalAny(l, p); err != nil {
-// 			log.Errorf("Cannot unmarshal: %v", err)
-// 		} else {
-// 			fmt.Printf("LISTENER %s: %v\n", p.Name, p.Address)
-// 			if strResponse, err := gogoprotomarshal.ToJSONWithIndent(p, " "); err == nil {
-// 				if outputFile == nil || *outputFile == "" {
-// 					fmt.Printf("%v\n", strResponse)
-// 				} else if err := ioutil.WriteFile(*outputFile, []byte(strResponse), 0644); err != nil {
-// 					log.Errorf("Cannot write output to file %q", *outputFile)
-// 				}
-// 			} else {
-// 				log.Errorf("Cannot convert to JSON: %v", err)
-// 			}
-// 			// fmt.Printf("%v\n", p)
-// 		}
-// 	}
-// 	// fmt.Printf("RESP: %s", resp.ProtoMessage())
-// 	// if strResponse, err := gogoprotomarshal.ToJSONWithIndent(resp, " "); err == nil {
-// 	// 	if outputFile == nil || *outputFile == "" {
-// 	// 		fmt.Printf("%v\n", strResponse)
-// 	// 	} else if err := ioutil.WriteFile(*outputFile, []byte(strResponse), 0644); err != nil {
-// 	// 		log.Errorf("Cannot write output to file %q", *outputFile)
-// 	// 	}
-// 	// } else {
-// 	// 	log.Errorf("Cannot convert to JSON: %v", err)
-// 	// }
-// }
+			pod := newPodInfo(proxyTag, resolveKubeConfigPath(kubeConfig), proxyType)
+			req := handler.makeRequest(pod)
+			pilotClient.send(req, handler)
+		},
+	}
+}

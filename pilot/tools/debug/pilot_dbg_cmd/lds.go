@@ -7,43 +7,28 @@ import (
 
 	xdsapi "github.com/envoyproxy/go-control-plane/envoy/api/v2"
 	"github.com/golang/protobuf/ptypes"
-	"istio.io/pkg/log"	
+	"istio.io/pkg/log"
 )
 
-func init() {
-	RootCmd.AddCommand(lds())
-}
-
 func lds() *cobra.Command {
-	var filter string
-	localCmd := &cobra.Command{
-		Use:   "lds",
-		Short: "Show LDS config for addresses",
-		Long:  "Show LDS config for addresses",
-		Run: func(cmd *cobra.Command, args []string) {
-			showLDS(filter)
-		},
-	}
-	localCmd.Flags().StringVarP(&filter, "filter", "f", "", "Show only listener with name matching the filter")
-
+	handler := &ldsHandler{}
+	localCmd := makeXDSCmd("lds", handler)
+	localCmd.Flags().StringVarP(&handler.filter, "name", "n", "", "Show only listener with this name")
 	return localCmd
 }
 
-func showLDS(filter string) {
-	pilotClient := NewPilotClient(pilotURL, kubeConfig)
+type ldsHandler struct {
+	filter string
+}
 
-	defer func() {
-		pilotClient.Close()
-	}()
+func (c *ldsHandler) makeRequest(pod *PodInfo) *xdsapi.DiscoveryRequest {
+	return pod.makeRequest("lds")
+}
 
-	pod := NewPodInfo(proxyTag, resolveKubeConfigPath(kubeConfig), proxyType)
-
-	req := pod.makeRequest("lds")
-	resp := pilotClient.GetXdsResponse(req)
-	
-	if outputAsRaw {
-		Output(resp)
-		return
+func (c *ldsHandler) onXDSResponse(resp *xdsapi.DiscoveryResponse) error {
+	if outputAll {
+		outputJSON(resp)
+		return nil
 	}
 	seenListener := make([]string, 0, len(resp.Resources))
 	for _, res := range resp.Resources {
@@ -54,13 +39,14 @@ func showLDS(filter string) {
 		}
 
 		seenListener = append(seenListener, listener.Name)
-		if filter == listener.Name {
-			Output(listener)
-			return
+		if c.filter == listener.Name {
+			outputJSON(listener)
+			return nil
 		}
 	}
-	fmt.Printf("Cannot find any listener with name %q. Seen:\n", filter)
+	msg := fmt.Sprintf("Cannot find any listener with name %q. Seen:\n", c.filter)
 	for _, c := range seenListener {
-		fmt.Printf("  %s\n", c)
+		msg += fmt.Sprintf("  %s\n", c)
 	}
+	return fmt.Errorf("%s", msg)
 }

@@ -2,36 +2,26 @@ package pilot_dbg_cmd
 
 import (
 	"github.com/spf13/cobra"
+
+	xdsapi "github.com/envoyproxy/go-control-plane/envoy/api/v2"
 )
 
-func init() {
-	RootCmd.AddCommand(rds())
-}
-
 func rds() *cobra.Command {
-	var resources []string
-	localCmd := &cobra.Command{
-		Use:   "rds",
-		Short: "Show CDS config for resources",
-		Long: "Show RDS config for resources",
-		Run: func(cmd *cobra.Command, args []string) {
-			showRDS(resources)
-		},
-	}
-	localCmd.Flags().StringArrayVarP(&resources, "resources", "r", nil, "Resources to show")
-
+	handler := &rdsHandler{}
+	localCmd := makeXDSCmd("rds", handler)
+	localCmd.Flags().StringArrayVarP(&handler.resources, "resources", "r", nil, "Resources to show")
 	return localCmd
 }
 
-func showRDS(resources []string) {
-	pilotClient := NewPilotClient(pilotURL, kubeConfig)
+type rdsHandler struct {
+	resources []string
+}
 
-	defer func() {
-		pilotClient.Close()
-	}()
+func (c *rdsHandler) makeRequest(pod *PodInfo) *xdsapi.DiscoveryRequest {
+	return pod.appendResources(pod.makeRequest("rds"), c.resources)
+}
 
-	pod := NewPodInfo(proxyTag, resolveKubeConfigPath(kubeConfig), proxyType)
-	req := pod.appendResources(pod.makeRequest("rds"), resources)
-	resp := pilotClient.GetXdsResponse(req)
-	Output(resp)
+func (c *rdsHandler) onXDSResponse(resp *xdsapi.DiscoveryResponse) error {
+	outputJSON(resp)
+	return nil
 }

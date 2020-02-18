@@ -10,41 +10,26 @@ import (
 	"istio.io/pkg/log"
 )
 
-func init() {
-	RootCmd.AddCommand(cds())
-}
-
 func cds() *cobra.Command {
-	var filter string
-	localCmd := &cobra.Command{
-		Use:   "cds",
-		Short: "Show CDS config for addresses",
-		Long:  "Show CDS config for addresses",
-		Run: func(cmd *cobra.Command, args []string) {
-			showCDS(filter)
-		},
-	}
-	localCmd.Flags().StringVarP(&filter, "filter", "f", "", "Show only cluster with name matching the filter")
-
+	handler := &cdsHandler{}
+	localCmd := makeXDSCmd("cds", handler)
+	localCmd.Flags().StringVarP(&handler.filter, "name", "n", "", "Show only cluster with this name")
 	return localCmd
 }
 
-func showCDS(filter string) {
-	pilotClient := NewPilotClient(pilotURL, kubeConfig)
-	defer func() {
-		pilotClient.Close()
-	}()
+type cdsHandler struct {
+	filter string
+}
 
-	pod := NewPodInfo(proxyTag, resolveKubeConfigPath(kubeConfig), proxyType)
+func (c *cdsHandler) makeRequest(pod *PodInfo) *xdsapi.DiscoveryRequest {
+	return pod.makeRequest("cds")
+}
 
-	req := pod.makeRequest("cds")
-	resp := pilotClient.GetXdsResponse(req)
-
-	if outputAsRaw {
-		Output(resp)
-		return
+func (c *cdsHandler) onXDSResponse(resp *xdsapi.DiscoveryResponse) error {
+	if outputAll {
+		outputJSON(resp)
+		return nil
 	}
-
 	seenClusters := make([]string, 0, len(resp.Resources))
 	for _, res := range resp.Resources {
 		cluster := &xdsapi.Cluster{}
@@ -54,14 +39,14 @@ func showCDS(filter string) {
 		}
 		seenClusters = append(seenClusters, cluster.Name)
 
-		if filter == cluster.Name {
-			Output(cluster)
-			return
+		if c.filter == cluster.Name {
+			outputJSON(cluster)
+			return nil
 		}
 	}
-
-	fmt.Printf("Cannot find any cluster with name %q. Seen:\n", filter)
+	msg := fmt.Sprintf("Cannot find any listener with name %q. Seen:\n", c.filter)
 	for _, c := range seenClusters {
-		fmt.Printf("  %s\n", c)
+		msg += fmt.Sprintf("  %s\n", c)
 	}
+	return fmt.Errorf("%s", msg)
 }
