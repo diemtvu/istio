@@ -258,11 +258,10 @@ func (c *PilotClient) send(req *xdsapi.DiscoveryRequest, handler xDSHandler) {
 	adsClient := ads.NewAggregatedDiscoveryServiceClient(conn)
 	stream, err := adsClient.StreamAggregatedResources(context.Background())
 	if err != nil {
-		panic(err.Error())
+		log.Fatalf("Cannot call gRPC: %v", err)
 	}
-	err = stream.Send(req)
-	if err != nil {
-		panic(err.Error())
+	if err := stream.Send(req); err != nil {
+		log.Fatalf("Cannot send request: %v", err)
 	}
 	for {
 		log.Infof("Waiting for response .......... ")
@@ -274,8 +273,19 @@ func (c *PilotClient) send(req *xdsapi.DiscoveryRequest, handler xDSHandler) {
 		}
 		log.Infof("Received %s at %s with %d resources", res.TypeUrl, res.VersionInfo, len(res.Resources))
 		if err := handler.onXDSResponse(res); err != nil {
-			log.Fatalf("%v", err)
+			log.Fatalf("Error handle xDS response: %v", err)
 		}
+		ackReq := &xdsapi.DiscoveryRequest{
+			VersionInfo: res.VersionInfo,
+			ResponseNonce: res.Nonce,
+			TypeUrl: req.TypeUrl,
+			Node: req.Node,
+			ResourceNames: req.ResourceNames,
+		}
+		if err := stream.Send(ackReq); err != nil {
+			log.Fatalf("Cannot ACK: %v", err)
+		}
+	
 		if !c.streaming {
 			break
 		}
