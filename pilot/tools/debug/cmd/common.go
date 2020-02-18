@@ -34,12 +34,13 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
-	v2 "istio.io/istio/pilot/pkg/proxy/envoy/v2"
 	v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp" //nolint
 	"k8s.io/client-go/tools/clientcmd"
+
+	v2 "istio.io/istio/pilot/pkg/proxy/envoy/v2"
 
 	"istio.io/pkg/env"
 	"istio.io/pkg/log"
