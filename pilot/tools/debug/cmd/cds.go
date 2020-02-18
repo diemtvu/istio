@@ -34,7 +34,7 @@ func cds() *cobra.Command {
 
 type cdsHandler struct {
 	matchName string
-	showAll bool
+	showAll   bool
 }
 
 func (c *cdsHandler) makeRequest(pod *PodInfo) *xdsapi.DiscoveryRequest {

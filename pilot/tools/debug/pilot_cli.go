@@ -16,11 +16,11 @@
 // with either real pilot deployment (via port forwarding) or with a local pilot.
 //
 // Examples:
-// 
+//
 //
 // To get LDS or CDS, use -type lds or -type cds, and provide the pod id or app label. For example:
 // ```bash
-// go run pilot_cli.go lds --proxytag httpbin-5766dd474b-2hlnx 
+// go run pilot_cli.go lds --proxytag httpbin-5766dd474b-2hlnx
 // go run pilot_cli.go lds --proxytag httpbin
 // ```
 // Note If more than one pod match with the app label, one will be picked arbitrarily.
@@ -45,12 +45,12 @@
 package main
 
 import (
-	"istio.io/pkg/log"
 	cmd "istio.io/istio/pilot/tools/debug/cmd"
+	"istio.io/pkg/log"
 )
 
 func main() {
 	if err := cmd.RootCmd.Execute(); err != nil {
 		log.Errorf("%v", err)
-	}	
+	}
 }

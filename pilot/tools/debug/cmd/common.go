@@ -273,7 +273,7 @@ func (c *PilotClient) send(req *xdsapi.DiscoveryRequest, handler xDSHandler) {
 		}
 		log.Infof("Received %s at %s with %d resources", res.TypeUrl, res.VersionInfo, len(res.Resources))
 		if err := handler.onXDSResponse(res); err != nil {
-			log.Fatalf("%v", err)			
+			log.Fatalf("%v", err)
 		}
 		if !c.streaming {
 			break
