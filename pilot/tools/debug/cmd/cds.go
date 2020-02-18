@@ -1,4 +1,18 @@
-package pilot_dbg_cmd
+// Copyright 2020 Istio Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package cmd
 
 import (
 	"fmt"
@@ -13,12 +27,14 @@ import (
 func cds() *cobra.Command {
 	handler := &cdsHandler{}
 	localCmd := makeXDSCmd("cds", handler)
-	localCmd.Flags().StringVarP(&handler.filter, "name", "n", "", "Show only cluster with this name")
+	localCmd.Flags().StringVarP(&handler.matchName, "name", "n", "", "Show only cluster with this name")
+	localCmd.Flags().BoolVarP(&handler.showAll, "all", "a", false, "If set, output the whole CDS response.")
 	return localCmd
 }
 
 type cdsHandler struct {
-	filter string
+	matchName string
+	showAll bool
 }
 
 func (c *cdsHandler) makeRequest(pod *PodInfo) *xdsapi.DiscoveryRequest {
@@ -26,7 +42,7 @@ func (c *cdsHandler) makeRequest(pod *PodInfo) *xdsapi.DiscoveryRequest {
 }
 
 func (c *cdsHandler) onXDSResponse(resp *xdsapi.DiscoveryResponse) error {
-	if outputAll {
+	if c.showAll {
 		outputJSON(resp)
 		return nil
 	}
@@ -39,12 +55,12 @@ func (c *cdsHandler) onXDSResponse(resp *xdsapi.DiscoveryResponse) error {
 		}
 		seenClusters = append(seenClusters, cluster.Name)
 
-		if c.filter == cluster.Name {
+		if c.matchName == cluster.Name {
 			outputJSON(cluster)
 			return nil
 		}
 	}
-	msg := fmt.Sprintf("Cannot find any listener with name %q. Seen:\n", c.filter)
+	msg := fmt.Sprintf("Cannot find any listener with name %q. Seen:\n", c.matchName)
 	for _, c := range seenClusters {
 		msg += fmt.Sprintf("  %s\n", c)
 	}

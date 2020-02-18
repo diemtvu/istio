@@ -1,4 +1,4 @@
-// Copyright 2018 Istio Authors
+// Copyright 2020 Istio Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,42 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Tool to get xDS configs from pilot. This tool simulate envoy sidecar gRPC call to get config,
-// so it will work even when sidecar haswhen sidecar hasn't connected (e.g in the case of pilot running on local machine))
-//
-// Usage:
-//
-// First, you can either manually expose pilot gRPC port or rely on this tool to port-forward pilot by omitting -pilot_url flag:
-//
-// * By port-forward existing pilot:
-// ```bash
-// kubectl port-forward $(kubectl get pod -l istio=pilot -o jsonpath={.items[0].metadata.name} -n istio-system) -n istio-system 15010
-// ```
-// * Or run local pilot using the same k8s config.
-// ```bash
-// pilot-discovery discovery --kubeconfig=${HOME}/.kube/config
-// ```
-//
-// To get LDS or CDS, use -type lds or -type cds, and provide the pod id or app label. For example:
-// ```bash
-// go run pilot_cli.go --type lds --proxytag httpbin-5766dd474b-2hlnx  # --res will be ignored
-// go run pilot_cli.go --type lds --proxytag httpbin
-// ```
-// Note If more than one pod match with the app label, one will be picked arbitrarily.
-//
-// For EDS/RDS, provide comma-separated-list of corresponding clusters or routes name. For example:
-// ```bash
-// go run ./pilot/tools/debug/pilot_cli.go --type eds --proxytag httpbin \
-// --res "inbound|http||sleep.default.svc.cluster.local,outbound|http||httpbin.default.svc.cluster.local"
-// ```
-//
-// Script requires kube config in order to connect to k8s registry to get pod information (for LDS and CDS type). The default
-// value for kubeconfig path is .kube/config in home folder (works for Linux only). It can be changed via -kubeconfig flag.
-// ```bash
-// go run ./pilot/debug/pilot_cli.go --type lds --proxytag httpbin --kubeconfig path/to/kube/config
-// ```
-
-package pilot_dbg_cmd
+package cmd
 
 import (
 	"context"
@@ -65,15 +30,15 @@ import (
 	xdsapi "github.com/envoyproxy/go-control-plane/envoy/api/v2"
 	core1 "github.com/envoyproxy/go-control-plane/envoy/api/v2/core"
 	ads "github.com/envoyproxy/go-control-plane/envoy/service/discovery/v2"
-	"github.com/spf13/cobra"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/golang/protobuf/proto"
+	"github.com/spf13/cobra"
 	"google.golang.org/grpc"
 	v2 "istio.io/istio/pilot/pkg/proxy/envoy/v2"
 	v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/gcp" //nolint
 	"k8s.io/client-go/tools/clientcmd"
 
 	"istio.io/pkg/env"
@@ -306,9 +271,9 @@ func (c *PilotClient) send(req *xdsapi.DiscoveryRequest, handler xDSHandler) {
 		} else if err != nil {
 			panic(err.Error())
 		}
+		log.Infof("Received %s at %s with %d resources", res.TypeUrl, res.VersionInfo, len(res.Resources))
 		if err := handler.onXDSResponse(res); err != nil {
-			log.Fatalf("%v", err)
-			// panic(err.Error())
+			log.Fatalf("%v", err)			
 		}
 		if !c.streaming {
 			break
